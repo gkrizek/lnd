@@ -95,7 +95,7 @@ func (f *OnionFile) PrivateKey(onionType OnionType) ([]byte, error) {
 	}
 
 	// If the privateKey doesn't start with either v2 or v3 key params
-	// it's likely encrypted. Attempt to decrypt before returning
+	// it's likely encrypted. Attempt to decrypt
 	if !bytes.HasPrefix(privateKey, []byte(V2keyParam)) &&
 		!bytes.HasPrefix(privateKey, []byte(V3keyParam)) {
 		reader := bytes.NewReader(privateKey)
