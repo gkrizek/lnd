@@ -44,6 +44,7 @@ type OnionStore interface {
 type OnionFile struct {
 	privateKeyPath string
 	privateKeyPerm os.FileMode
+	encryptKey     bool
 }
 
 // A compile-time constraint to ensure OnionFile satisfies the OnionStore
@@ -52,15 +53,21 @@ var _ OnionStore = (*OnionFile)(nil)
 
 // NewOnionFile creates a file-based implementation of the OnionStore interface
 // to store an onion service's private key.
-func NewOnionFile(privateKeyPath string, privateKeyPerm os.FileMode) *OnionFile {
+func NewOnionFile(privateKeyPath string, privateKeyPerm os.FileMode,
+	encryptKey bool) *OnionFile {
 	return &OnionFile{
 		privateKeyPath: privateKeyPath,
 		privateKeyPerm: privateKeyPerm,
+		encryptKey:     encryptKey,
 	}
 }
 
 // StorePrivateKey stores the private key at its expected path.
 func (f *OnionFile) StorePrivateKey(_ OnionType, privateKey []byte) error {
+	if f.encryptKey {
+		// TODO Encrypt the private key and write encrypted data to file
+		privateKey = privateKey
+	}
 	return ioutil.WriteFile(f.privateKeyPath, privateKey, f.privateKeyPerm)
 }
 
@@ -70,7 +77,12 @@ func (f *OnionFile) PrivateKey(_ OnionType) ([]byte, error) {
 	if _, err := os.Stat(f.privateKeyPath); os.IsNotExist(err) {
 		return nil, ErrNoPrivateKey
 	}
-	return ioutil.ReadFile(f.privateKeyPath)
+	privateKey, err := ioutil.ReadFile(f.privateKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	// TODO check if the tor file is encrypted. If so, decrypt it
+	return privateKey, nil
 }
 
 // DeletePrivateKey removes the file containing the private key.

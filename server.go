@@ -2027,7 +2027,8 @@ func (s *server) createNewHiddenService() error {
 	onionCfg := tor.AddOnionConfig{
 		VirtualPort: defaultPeerPort,
 		TargetPorts: listenPorts,
-		Store:       tor.NewOnionFile(s.cfg.Tor.PrivateKeyPath, 0600),
+		Store: tor.NewOnionFile(s.cfg.Tor.PrivateKeyPath, 0600,
+			s.cfg.Tor.EncryptKey),
 	}
 
 	switch {
@@ -2883,7 +2884,7 @@ func (s *server) peerConnected(conn net.Conn, connReq *connmgr.ConnReq,
 		UnsafeReplay:            s.cfg.UnsafeReplay,
 		MaxOutgoingCltvExpiry:   s.cfg.MaxOutgoingCltvExpiry,
 		MaxChannelFeeAllocation: s.cfg.MaxChannelFeeAllocation,
-		Quit:                    s.quit,
+		Quit: s.quit,
 	}
 
 	copy(pCfg.PubKeyBytes[:], peerAddr.IdentityKey.SerializeCompressed())
