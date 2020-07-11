@@ -1,10 +1,14 @@
 package tor
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+
+	"github.com/lightningnetwork/lnd/keychain"
+	"github.com/lightningnetwork/lnd/lnencrypt"
 )
 
 var (
@@ -22,6 +26,10 @@ const (
 
 	// V3 denotes that the onion service is V3.
 	V3
+
+	V2keyParam string = "RSA1024"
+
+	V3keyParam string = "ED25519-V3"
 )
 
 // OnionStore is a store containing information about a particular onion
@@ -45,6 +53,7 @@ type OnionFile struct {
 	privateKeyPath string
 	privateKeyPerm os.FileMode
 	encryptKey     bool
+	keyRing        keychain.KeyRing
 }
 
 // A compile-time constraint to ensure OnionFile satisfies the OnionStore
@@ -54,26 +63,29 @@ var _ OnionStore = (*OnionFile)(nil)
 // NewOnionFile creates a file-based implementation of the OnionStore interface
 // to store an onion service's private key.
 func NewOnionFile(privateKeyPath string, privateKeyPerm os.FileMode,
-	encryptKey bool) *OnionFile {
+	encryptKey bool, keyRing keychain.KeyRing) *OnionFile {
 	return &OnionFile{
 		privateKeyPath: privateKeyPath,
 		privateKeyPerm: privateKeyPerm,
 		encryptKey:     encryptKey,
+		keyRing:        keyRing,
 	}
 }
 
 // StorePrivateKey stores the private key at its expected path.
 func (f *OnionFile) StorePrivateKey(_ OnionType, privateKey []byte) error {
 	if f.encryptKey {
-		// TODO Encrypt the private key and write encrypted data to file
-		privateKey = privateKey
+		var b bytes.Buffer
+		payload := bytes.NewBuffer(privateKey)
+		lnencrypt.EncryptPayloadToWriter(*payload, &b, f.keyRing)
+		privateKey = b.Bytes()
 	}
 	return ioutil.WriteFile(f.privateKeyPath, privateKey, f.privateKeyPerm)
 }
 
 // PrivateKey retrieves the private key from its expected path. If the file does
 // not exist, then ErrNoPrivateKey is returned.
-func (f *OnionFile) PrivateKey(_ OnionType) ([]byte, error) {
+func (f *OnionFile) PrivateKey(onionType OnionType) ([]byte, error) {
 	if _, err := os.Stat(f.privateKeyPath); os.IsNotExist(err) {
 		return nil, ErrNoPrivateKey
 	}
@@ -81,7 +93,17 @@ func (f *OnionFile) PrivateKey(_ OnionType) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO check if the tor file is encrypted. If so, decrypt it
+
+	// If the privateKey doesn't start with either v2 or v3 key params
+	// it's likely encrypted. Attempt to decrypt before returning
+	if !bytes.HasPrefix(privateKey, []byte(V2keyParam)) &&
+		!bytes.HasPrefix(privateKey, []byte(V3keyParam)) {
+		reader := bytes.NewReader(privateKey)
+		privateKey, err = lnencrypt.DecryptPayloadFromReader(reader, f.keyRing)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return privateKey, nil
 }
 
@@ -135,9 +157,9 @@ func (c *Controller) AddOnion(cfg AddOnionConfig) (*OnionAddr, error) {
 	var keyParam string
 	switch cfg.Type {
 	case V2:
-		keyParam = "NEW:RSA1024"
+		keyParam = "NEW:" + V2keyParam
 	case V3:
-		keyParam = "NEW:ED25519-V3"
+		keyParam = "NEW:" + V3keyParam
 	}
 
 	if cfg.Store != nil {

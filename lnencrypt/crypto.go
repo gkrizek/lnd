@@ -1,4 +1,4 @@
-package chanbackup
+package lnencrypt
 
 import (
 	"bytes"
@@ -50,13 +50,13 @@ func genEncryptionKey(keyRing keychain.KeyRing) ([]byte, error) {
 	return encryptionKey[:], nil
 }
 
-// encryptPayloadToWriter attempts to write the set of bytes contained within
+// EncryptPayloadToWriter attempts to write the set of bytes contained within
 // the passed byes.Buffer into the passed io.Writer in an encrypted form. We
 // use a 24-byte chachapoly AEAD instance with a randomized nonce that's
 // pre-pended to the final payload and used as associated data in the AEAD. We
 // use the passed keyRing to generate the encryption key, see genEncryptionKey
 // for further details.
-func encryptPayloadToWriter(payload bytes.Buffer, w io.Writer,
+func EncryptPayloadToWriter(payload bytes.Buffer, w io.Writer,
 	keyRing keychain.KeyRing) error {
 
 	// First, we'll derive the key that we'll use to encrypt the payload
@@ -96,11 +96,11 @@ func encryptPayloadToWriter(payload bytes.Buffer, w io.Writer,
 	return nil
 }
 
-// decryptPayloadFromReader attempts to decrypt the encrypted bytes within the
+// DecryptPayloadFromReader attempts to decrypt the encrypted bytes within the
 // passed io.Reader instance using the key derived from the passed keyRing. For
 // further details regarding the key derivation protocol, see the
 // genEncryptionKey method.
-func decryptPayloadFromReader(payload io.Reader,
+func DecryptPayloadFromReader(payload io.Reader,
 	keyRing keychain.KeyRing) ([]byte, error) {
 
 	// First, we'll re-generate the encryption key that we use for all the

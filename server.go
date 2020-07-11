@@ -2028,7 +2028,7 @@ func (s *server) createNewHiddenService() error {
 		VirtualPort: defaultPeerPort,
 		TargetPorts: listenPorts,
 		Store: tor.NewOnionFile(s.cfg.Tor.PrivateKeyPath, 0600,
-			s.cfg.Tor.EncryptKey),
+			s.cfg.Tor.EncryptKey, s.cc.keyRing),
 	}
 
 	switch {
