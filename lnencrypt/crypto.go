@@ -103,8 +103,7 @@ func EncryptPayloadToWriter(payload bytes.Buffer, w io.Writer,
 func DecryptPayloadFromReader(payload io.Reader,
 	keyRing keychain.KeyRing) ([]byte, error) {
 
-	// First, we'll re-generate the encryption key that we use for all the
-	// SCBs.
+	// First, we'll re-generate the encryption key
 	encryptionKey, err := genEncryptionKey(keyRing)
 	if err != nil {
 		return nil, err
@@ -125,8 +124,7 @@ func DecryptPayloadFromReader(payload io.Reader,
 	ciphertext := packedBackup[chacha20poly1305.NonceSizeX:]
 
 	// Now that we have the cipher text and the nonce separated, we can go
-	// ahead and decrypt the final blob so we can properly serialized the
-	// SCB.
+	// ahead and decrypt the final blob so we can properly serialize.
 	cipher, err := chacha20poly1305.NewX(encryptionKey)
 	if err != nil {
 		return nil, err

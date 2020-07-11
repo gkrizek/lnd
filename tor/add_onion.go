@@ -154,6 +154,7 @@ func (c *Controller) AddOnion(cfg AddOnionConfig) (*OnionAddr, error) {
 	// key. If it does not, then we should request the server to create a
 	// new onion service and return its private key. Otherwise, we'll
 	// request the server to recreate the onion server from our private key.
+	var privateKey []byte
 	var keyParam string
 	switch cfg.Type {
 	case V2:
@@ -230,11 +231,16 @@ func (c *Controller) AddOnion(cfg AddOnionConfig) (*OnionAddr, error) {
 		return nil, errors.New("service id not found in reply")
 	}
 
-	// If a new onion service was created and an onion store was provided,
-	// we'll store its private key to disk in the event that it needs to be
-	// recreated later on.
-	if privateKey, ok := replyParams["PrivateKey"]; cfg.Store != nil && ok {
-		err := cfg.Store.StorePrivateKey(cfg.Type, []byte(privateKey))
+	// If a new onion service was created, use the new private key for storage
+	if newPrivateKey, ok := replyParams["PrivateKey"]; ok {
+		privateKey = []byte(newPrivateKey)
+	}
+	// If an onion store was provided, we'll store its private key to disk in
+	// the event that it needs to be recreated later on.
+	// We write the private key to disk every time in case the user toggles
+	// the --tor.encryptkey flag.
+	if cfg.Store != nil {
+		err := cfg.Store.StorePrivateKey(cfg.Type, privateKey)
 		if err != nil {
 			return nil, fmt.Errorf("unable to write private key "+
 				"to file: %v", err)
