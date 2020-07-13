@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"runtime"
 	"sort"
@@ -64,6 +65,7 @@ import (
 	"github.com/lightningnetwork/lnd/routing/route"
 	"github.com/lightningnetwork/lnd/signal"
 	"github.com/lightningnetwork/lnd/sweep"
+	"github.com/lightningnetwork/lnd/tor"
 	"github.com/lightningnetwork/lnd/watchtower"
 	"github.com/lightningnetwork/lnd/zpay32"
 	"github.com/tv42/zbase32"
@@ -774,6 +776,11 @@ func (r *rpcServer) Start() error {
 			close(lis.Ready)
 			_ = r.grpcServer.Serve(lis)
 		}(lis)
+	}
+
+	// If Tor is enabled for gRPC or REST, create the hidden service
+	if r.cfg.Tor.Grpc || r.cfg.Tor.Rest {
+
 	}
 
 	// If Prometheus monitoring is enabled, start the Prometheus exporter.
@@ -6533,4 +6540,75 @@ func (r *rpcServer) FundingStateStep(ctx context.Context,
 	// TODO(roasbeef): return resulting state? also add a method to query
 	// current state?
 	return &lnrpc.FundingStateStepResp{}, nil
+}
+
+// createNewHiddenService automatically sets up a v2 or v3 onion service in
+// order to listen API requests over Tor.
+func (r *rpcServer) createNewHiddenService() error {
+	// Determine the different ports the server is listening on. The onion
+	// service's virtual port will map to these ports and one will be picked
+	// at random when the onion service is being accessed.
+	listenPorts := make([]int, 0, len(r.server.listenAddrs))
+	for _, listenAddr := range r.server.listenAddrs {
+		port := listenAddr.(*net.TCPAddr).Port
+		listenPorts = append(listenPorts, port)
+	}
+
+	if r.cfg.Tor.Grpc {
+		// TODO need to add the ability to create a hidden service with multiple virtual ports.
+		// Right now it only allows for 1 virtual port
+	}
+
+	// Once the port mapping has been set, we can go ahead and automatically
+	// create our onion service. The service's private key will be saved to
+	// disk in order to regain access to this service when restarting `lnd`.
+	onionCfg := tor.AddOnionConfig{
+		VirtualPort: defaultPort,
+		TargetPorts: listenPorts,
+		Store:       tor.NewOnionFile(s.cfg.Tor.PrivateKeyPath, 0600),
+	}
+
+	switch {
+	case s.cfg.Tor.V2:
+		onionCfg.Type = tor.V2
+	case s.cfg.Tor.V3:
+		onionCfg.Type = tor.V3
+	}
+
+	addr, err := s.torController.AddOnion(onionCfg)
+	if err != nil {
+		return err
+	}
+
+	// Now that the onion service has been created, we'll add the onion
+	// address it can be reached at to our list of advertised addresses.
+	newNodeAnn, err := s.genNodeAnnouncement(
+		true, func(currentAnn *lnwire.NodeAnnouncement) {
+			currentAnn.Addresses = append(currentAnn.Addresses, addr)
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("unable to generate new node "+
+			"announcement: %v", err)
+	}
+
+	// Finally, we'll update the on-disk version of our announcement so it
+	// will eventually propagate to nodes in the network.
+	selfNode := &channeldb.LightningNode{
+		HaveNodeAnnouncement: true,
+		LastUpdate:           time.Unix(int64(newNodeAnn.Timestamp), 0),
+		Addresses:            newNodeAnn.Addresses,
+		Alias:                newNodeAnn.Alias.String(),
+		Features: lnwire.NewFeatureVector(
+			newNodeAnn.Features, lnwire.Features,
+		),
+		Color:        newNodeAnn.RGBColor,
+		AuthSigBytes: newNodeAnn.Signature.ToSignatureBytes(),
+	}
+	copy(selfNode.PubKeyBytes[:], s.identityECDH.PubKey().SerializeCompressed())
+	if err := s.chanDB.ChannelGraph().SetSourceNode(selfNode); err != nil {
+		return fmt.Errorf("can't set self node: %v", err)
+	}
+
+	return nil
 }
