@@ -140,11 +140,14 @@ type Config struct {
 	DataDir      string `short:"b" long:"datadir" description:"The directory to store lnd's data within"`
 	SyncFreelist bool   `long:"sync-freelist" description:"Whether the databases used within lnd should sync their freelist to disk. This is disabled by default resulting in improved memory performance during operation, but with an increase in startup time."`
 
-	TLSCertPath     string   `long:"tlscertpath" description:"Path to write the TLS certificate for lnd's RPC and REST services"`
-	TLSKeyPath      string   `long:"tlskeypath" description:"Path to write the TLS private key for lnd's RPC and REST services"`
-	TLSExtraIPs     []string `long:"tlsextraip" description:"Adds an extra ip to the generated certificate"`
-	TLSExtraDomains []string `long:"tlsextradomain" description:"Adds an extra domain to the generated certificate"`
-	TLSAutoRefresh  bool     `long:"tlsautorefresh" description:"Re-generate TLS certificate and key if the IPs or domains are changed"`
+	TLSCertPath            string   `long:"tlscertpath" description:"Path to write the TLS certificate for lnd's RPC and REST services"`
+	TLSKeyPath             string   `long:"tlskeypath" description:"Path to write the TLS private key for lnd's RPC and REST services"`
+	TLSExtraIPs            []string `long:"tlsextraip" description:"Adds an extra ip to the generated certificate"`
+	TLSExtraDomains        []string `long:"tlsextradomain" description:"Adds an extra domain to the generated certificate"`
+	TLSAutoRefresh         bool     `long:"tlsautorefresh" description:"Re-generate TLS certificate and key if the IPs or domains are changed"`
+	TLSEncryptKey          bool     `long:"tlsencryptkey" description:"Automatically encrypts the TLS private key and generates ephemeral TLS key pairs when the wallet is not initialized or locked"`
+	TLSVerifyWebhook       string   `long:"tlsverifywebhook" description:"A HTTP endpoint to send a POST request to with the ephemeral TLS certificates. Must be used with --tlsencryptkey."`
+	TLSVerifyWebhookSecret string   `long:"tlsverifywebhooksecret" description:"The Bearer API token for the --tlsverifywebhook endpoint if it requires one."`
 
 	NoMacaroons     bool          `long:"no-macaroons" description:"Disable macaroon authentication"`
 	AdminMacPath    string        `long:"adminmacaroonpath" description:"Path to write the admin macaroon for lnd's RPC and REST services if it doesn't exist"`
@@ -349,11 +352,11 @@ func DefaultConfig() Config {
 		ChanEnableTimeout:             defaultChanEnableTimeout,
 		ChanDisableTimeout:            defaultChanDisableTimeout,
 		HeightHintCacheQueryDisable:   defaultHeightHintCacheQueryDisable,
-		Alias:                         defaultAlias,
-		Color:                         defaultColor,
-		MinChanSize:                   int64(minChanFundingSize),
-		NumGraphSyncPeers:             defaultMinPeers,
-		HistoricalSyncInterval:        discovery.DefaultHistoricalSyncInterval,
+		Alias:                  defaultAlias,
+		Color:                  defaultColor,
+		MinChanSize:            int64(minChanFundingSize),
+		NumGraphSyncPeers:      defaultMinPeers,
+		HistoricalSyncInterval: discovery.DefaultHistoricalSyncInterval,
 		Tor: &lncfg.Tor{
 			SOCKS:   defaultTorSOCKS,
 			DNS:     defaultTorDNS,
