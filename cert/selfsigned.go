@@ -14,6 +14,9 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/lightningnetwork/lnd/keychain"
+	"github.com/lightningnetwork/lnd/lnencrypt"
 )
 
 const (
@@ -186,8 +189,8 @@ func IsOutdated(cert *x509.Certificate, tlsExtraIPs,
 // This function is adapted from https://github.com/btcsuite/btcd and
 // https://github.com/btcsuite/btcutil
 func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
-	tlsExtraDomains []string, certValidity time.Duration, encryptKey bool) (
-	[]byte, []byte, error) {
+	tlsExtraDomains []string, certValidity time.Duration, encryptKey bool,
+	keyRing keychain.KeyRing) ([]byte, []byte, error) {
 
 	now := time.Now()
 	validUntil := now.Add(certValidity)
@@ -268,10 +271,13 @@ func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
 		}
 	}
 	if keyFile != "" {
+		keyPayload := keyBuf.Bytes()
 		if encryptKey {
-			// TODO: Encrypt the bytes first
+			var b bytes.Buffer
+			lnencrypt.EncryptPayloadToWriter(*keyBuf, &b, keyRing)
+			keyPayload = b.Bytes()
 		}
-		if err = ioutil.WriteFile(keyFile, keyBuf.Bytes(), 0600); err != nil {
+		if err = ioutil.WriteFile(keyFile, keyPayload, 0600); err != nil {
 			os.Remove(certFile)
 			return nil, nil, err
 		}
