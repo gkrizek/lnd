@@ -881,22 +881,34 @@ func getTLSConfig(cfg *Config, keyRing keychain.KeyRing) (*tls.Config, *credenti
 	}
 
 	// Do a check to see if the TLS private key is encrypted. If it's encrypted,
-	// try to decrypt it. Else continue with the plaintext key file.
+	// try to decrypt it. If it's in plaintext but should be encrypted,
+	// then encrypt it.
 	privateKeyPrefix := []byte("-----BEGIN EC PRIVATE KEY-----")
 	if !bytes.HasPrefix(keyBytes, privateKeyPrefix) {
 		// If the private key is encrypted but the user didn't pass
 		// --tlsencryptkey we error out. This is because the wallet is not
 		// unlocked yet and we don't have access to the keys yet for decrypt.
 		if !cfg.TLSEncryptKey {
-			return nil, nil, "", fmt.Errorf("It appears the TLS key is ",
-				"encrypted but you didn't pass the --tlsencryptkey flag. ",
-				"Please restart lnd with the --tlsencryptkey flag or delete ",
+			return nil, nil, "", fmt.Errorf("It appears the TLS key is " +
+				"encrypted but you didn't pass the --tlsencryptkey flag. " +
+				"Please restart lnd with the --tlsencryptkey flag or delete " +
 				"the TLS files for regeneration.\n")
 		}
 		reader := bytes.NewReader(keyBytes)
 		keyBytes, err = lnencrypt.DecryptPayloadFromReader(reader, keyRing)
 		if err != nil {
 			return nil, nil, "", err
+		}
+	} else {
+		// Private key is in plaintext, if the --tlsencryptkey flag is set
+		// then we need to encrypt it.
+		if cfg.TLSEncryptKey {
+			keyBuf := bytes.NewBuffer(keyBytes)
+			var b bytes.Buffer
+			lnencrypt.EncryptPayloadToWriter(*keyBuf, &b, keyRing)
+			if err = ioutil.WriteFile(cfg.TLSKeyPath, b.Bytes(), 0600); err != nil {
+				return nil, nil, "", err
+			}
 		}
 	}
 
