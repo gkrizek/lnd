@@ -1133,6 +1133,11 @@ var createCommand = cli.Command{
 	Channel Backups. Only one of the three parameters will be accepted. See
 	the restorechanbackup command for further details w.r.t the format
 	accepted.
+
+	If LND is ran with --tlsencryptkey, it generates a temporary TLS 
+	certificate until it's initialized. In this case you will need to
+	use the --tls_tmp_cert flag to specific a path to the temporary
+	certificate file. 
 	`,
 	Flags: []cli.Flag{
 		cli.StringFlag{
@@ -1148,6 +1153,11 @@ var createCommand = cli.Command{
 		cli.StringFlag{
 			Name:  "multi_file",
 			Usage: "the path to a multi-channel back up file",
+		},
+		cli.StringFlag{
+			Name: "tls_tmp_cert",
+			Usage: "the path to the temporary TLS certificate LND " +
+				"creates if --tlsencryptkey is set on LND",
 		},
 	},
 	Action: actionDecorator(create),
@@ -1509,6 +1519,11 @@ var unlockCommand = cli.Command{
 	start up. This command MUST be run after booting up lnd before it's
 	able to carry out its duties. An exception is if a user is running with
 	--noseedbackup, then a default passphrase will be used.
+
+	If LND is ran with --tlsencryptkey, it generates a temporary TLS 
+	certificate until it's unlocked. In this case you will need to
+	use the --tls_tmp_cert flag to specific a path to the temporary
+	certificate file. 
 	`,
 	Flags: []cli.Flag{
 		cli.IntFlag{
@@ -1528,6 +1543,11 @@ var unlockCommand = cli.Command{
 				"This flag should only be used in " +
 				"combination with some sort of password " +
 				"manager or secrets vault.",
+		},
+		cli.StringFlag{
+			Name: "tls_tmp_cert",
+			Usage: "the path to the temporary TLS certificate LND " +
+				"creates if --tlsencryptkey is set on LND",
 		},
 	},
 	Action: actionDecorator(unlock),
@@ -1616,7 +1636,19 @@ var changePasswordCommand = cli.Command{
 	--noseedbackup), one must restart their daemon without
 	--noseedbackup and use this command. The "current password" field
 	should be left empty.
+
+	If LND is ran with --tlsencryptkey, it generates a temporary TLS 
+	certificate until it's unlocked. In this case you will need to
+	use the --tls_tmp_cert flag to specific a path to the temporary
+	certificate file. 
 	`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name: "tls_tmp_cert",
+			Usage: "the path to the temporary TLS certificate LND " +
+				"creates if --tlsencryptkey is set on LND",
+		},
+	},
 	Action: actionDecorator(changePassword),
 }
 

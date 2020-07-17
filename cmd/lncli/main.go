@@ -75,6 +75,19 @@ func getClientConn(ctx *cli.Context, skipMacaroons bool) *grpc.ClientConn {
 		fatal(err)
 	}
 
+	// If skipMacaroons is set, we assume this request is from the
+	// getWalletUnlockerClient function. So we check is --tls_tmp_cert
+	// if set and if it is use that certificate instead.
+	if skipMacaroons {
+		if ctx.IsSet("tls_tmp_cert") {
+			tlsCertPath = ctx.String("tls_tmp_cert")
+			if _, err := os.Stat(tlsCertPath); os.IsNotExist(err) {
+				fatal(fmt.Errorf("Could not find temporary TLS certificate "+
+					"at %v!", tlsCertPath))
+			}
+		}
+	}
+
 	// Load the specified TLS certificate and build transport credentials
 	// with it.
 	creds, err := credentials.NewClientTLSFromFile(tlsCertPath, "")
