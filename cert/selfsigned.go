@@ -180,8 +180,10 @@ func IsOutdated(cert *x509.Certificate, tlsExtraIPs,
 	return false, nil
 }
 
-// GenCertPair generates a key/cert pair to the paths provided. The
-// auto-generated certificates should *not* be used in production for public
+// GenCertPair generates a key/cert pair to the paths provided if defined.
+// The bytes of the generated certificate and private key are returned.
+//
+//The auto-generated certificates should *not* be used in production for public
 // access as they're self-signed and don't necessarily contain all of the
 // desired hostnames for the service. For production/public use, consider a
 // real PKI.
@@ -264,7 +266,7 @@ func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
 		return nil, nil, fmt.Errorf("failed to encode private key: %v", err)
 	}
 
-	// Write cert and key files.
+	// Write cert and key files. Ensures the paths are defined before writing.
 	if certFile != "" {
 		if err = ioutil.WriteFile(certFile, certBuf.Bytes(), 0644); err != nil {
 			return nil, nil, err
@@ -272,6 +274,7 @@ func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
 	}
 	if keyFile != "" {
 		keyPayload := keyBuf.Bytes()
+		// If enabled, encrypt the TLS private key on disk
 		if encryptKey {
 			var b bytes.Buffer
 			lnencrypt.EncryptPayloadToWriter(*keyBuf, &b, keyRing)

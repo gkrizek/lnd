@@ -24,8 +24,8 @@ var (
 	}
 )
 
-// LoadCert loads a certificate and its corresponding private key from the PEM
-// files indicated and returns the certificate in the two formats it is most
+// LoadCert loads a certificate and its corresponding private key from the
+// bytes indicated and returns the certificate in the two formats it is most
 // commonly used.
 func LoadCert(certBuf, keyBuf []byte) (tls.Certificate, *x509.Certificate,
 	error) {
