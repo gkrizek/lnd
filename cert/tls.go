@@ -51,9 +51,9 @@ func LoadCert(certBuf, keyBuf []byte) (tls.Certificate, *x509.Certificate,
 
 // TLSConfFromCert returns the default TLS configuration used for a server,
 // using the given certificate as identity.
-func TLSConfFromCert(certData tls.Certificate) *tls.Config {
+func TLSConfFromCert(certData []tls.Certificate) *tls.Config {
 	return &tls.Config{
-		Certificates: []tls.Certificate{certData},
+		Certificates: certData,
 		CipherSuites: tlsCipherSuites,
 		MinVersion:   tls.VersionTLS12,
 	}

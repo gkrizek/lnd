@@ -39,6 +39,7 @@ const (
 	defaultChainSubDirname    = "chain"
 	defaultGraphSubDirname    = "graph"
 	defaultTowerSubDirname    = "watchtower"
+	defaultExternalSSLDirname = "zerossl"
 	defaultTLSCertFilename    = "tls.cert"
 	defaultTLSKeyFilename     = "tls.key"
 	defaultAdminMacFilename   = "admin.macaroon"
@@ -50,6 +51,7 @@ const (
 	defaultRPCPort            = 10009
 	defaultRESTPort           = 8080
 	defaultPeerPort           = 9735
+	defaultCertValidationPort = 80
 	defaultRPCHost            = "localhost"
 
 	defaultNoSeedBackup                  = false
@@ -106,8 +108,9 @@ var (
 
 	defaultTowerDir = filepath.Join(defaultDataDir, defaultTowerSubDirname)
 
-	defaultTLSCertPath = filepath.Join(DefaultLndDir, defaultTLSCertFilename)
-	defaultTLSKeyPath  = filepath.Join(DefaultLndDir, defaultTLSKeyFilename)
+	defaultExternalSSLDir = filepath.Join(DefaultLndDir, defaultExternalSSLDirname)
+	defaultTLSCertPath    = filepath.Join(DefaultLndDir, defaultTLSCertFilename)
+	defaultTLSKeyPath     = filepath.Join(DefaultLndDir, defaultTLSKeyFilename)
 
 	defaultBtcdDir         = btcutil.AppDataDir("btcd", false)
 	defaultBtcdRPCCertFile = filepath.Join(defaultBtcdDir, "rpc.cert")
@@ -157,6 +160,10 @@ type Config struct {
 	MaxLogFiles     int           `long:"maxlogfiles" description:"Maximum logfiles to keep (0 for no rotation)"`
 	MaxLogFileSize  int           `long:"maxlogfilesize" description:"Maximum logfile size in MB"`
 	AcceptorTimeout time.Duration `long:"acceptortimeout" description:"Time after which an RPCAcceptor will time out and return false if it hasn't yet received a response"`
+
+	ExternalSSLDir     string `long:"externalssldir" description:"The directory to store the external certificates within"`
+	CertValidationPort int    `long:"certvalidationport" description:"The port on which lnd will listen for certificate validation challenges."`
+	ExternalSSLDomain  string `long:"externalssldomain" description:"Request an external certificate for this domain"`
 
 	// We'll parse these 'raw' string arguments into real net.Addrs in the
 	// loadConfig function. We need to expose the 'raw' strings so the
@@ -280,16 +287,18 @@ type Config struct {
 // DefaultConfig returns all default values for the Config struct.
 func DefaultConfig() Config {
 	return Config{
-		LndDir:          DefaultLndDir,
-		ConfigFile:      DefaultConfigFile,
-		DataDir:         defaultDataDir,
-		DebugLevel:      defaultLogLevel,
-		TLSCertPath:     defaultTLSCertPath,
-		TLSKeyPath:      defaultTLSKeyPath,
-		LogDir:          defaultLogDir,
-		MaxLogFiles:     defaultMaxLogFiles,
-		MaxLogFileSize:  defaultMaxLogFileSize,
-		AcceptorTimeout: defaultAcceptorTimeout,
+		LndDir:             DefaultLndDir,
+		ConfigFile:         DefaultConfigFile,
+		DataDir:            defaultDataDir,
+		DebugLevel:         defaultLogLevel,
+		ExternalSSLDir:     defaultExternalSSLDir,
+		CertValidationPort: defaultCertValidationPort,
+		TLSCertPath:        defaultTLSCertPath,
+		TLSKeyPath:         defaultTLSKeyPath,
+		LogDir:             defaultLogDir,
+		MaxLogFiles:        defaultMaxLogFiles,
+		MaxLogFileSize:     defaultMaxLogFileSize,
+		AcceptorTimeout:    defaultAcceptorTimeout,
 		Bitcoin: &lncfg.Chain{
 			MinHTLCIn:     defaultBitcoinMinHTLCInMSat,
 			MinHTLCOut:    defaultBitcoinMinHTLCOutMSat,
@@ -505,6 +514,7 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, error) {
 	// to directories and files are cleaned and expanded before attempting
 	// to use them later on.
 	cfg.DataDir = CleanAndExpandPath(cfg.DataDir)
+	cfg.ExternalSSLDir = CleanAndExpandPath(cfg.ExternalSSLDir)
 	cfg.TLSCertPath = CleanAndExpandPath(cfg.TLSCertPath)
 	cfg.TLSKeyPath = CleanAndExpandPath(cfg.TLSKeyPath)
 	cfg.AdminMacPath = CleanAndExpandPath(cfg.AdminMacPath)

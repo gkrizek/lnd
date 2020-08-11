@@ -809,34 +809,105 @@ func getEphemeralTLSConfig(cfg *Config, keyRing keychain.KeyRing) (*tls.Config,
 	if err != nil {
 		return nil, nil, "", err
 	}
-	rpcsLog.Infof("Done generating ephemeral TLS certificates")
 
-	certData, parsedCert, err := cert.LoadCert(
-		certBytes, keyBytes,
-	)
-	if err != nil {
-		return nil, nil, "", err
-	}
+	if cfg.ExternalSSLDomain != "" {
+		ltndLog.Infof("Requesting external certificate for domain %v",
+			cfg.ExternalSSLDomain)
 
-	tlsCfg := cert.TLSConfFromCert(certData)
-	certPool := x509.NewCertPool()
-	certPool.AddCert(parsedCert)
-	restCreds := credentials.NewClientTLSFromCert(certPool, "")
+		csr, err := cert.GenerateCsr(keyBytes, cfg.ExternalSSLDomain)
+		if err != nil {
+			return nil, nil, "", err
+		}
 
-	restProxyDest := cfg.RPCListeners[0].String()
-	switch {
-	case strings.Contains(restProxyDest, "0.0.0.0"):
-		restProxyDest = strings.Replace(
-			restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+		externalCert, err := cert.RequestExternalCert(csr, cfg.ExternalSSLDomain)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		err = cert.StartValidationListener(cfg.CertValidationPort, externalCert)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		certificate, caBundle, err := cert.GetExternalCert(externalCert)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		externalSSLCertPath := cfg.ExternalSSLDir + "/tls.cert.tmp"
+		externalCertBytes := []byte(certificate + "\n" + caBundle)
+		if err = ioutil.WriteFile(externalSSLCertPath, externalCertBytes, 0644); err != nil {
+			return nil, nil, "", err
+		}
+
+		externalCertData, externalParsedCert, err := cert.LoadCert(
+			externalCertBytes, keyBytes,
 		)
+		if err != nil {
+			return nil, nil, "", err
+		}
 
-	case strings.Contains(restProxyDest, "[::]"):
-		restProxyDest = strings.Replace(
-			restProxyDest, "[::]", "[::1]", 1,
+		ltndLog.Infof("Successfully received external certificate for domain %v",
+			cfg.ExternalSSLDomain)
+
+		rpcsLog.Infof("Done generating ephemeral TLS certificates")
+
+		certData, parsedCert, err := cert.LoadCert(
+			certBytes, keyBytes,
 		)
-	}
+		if err != nil {
+			return nil, nil, "", err
+		}
 
-	return tlsCfg, &restCreds, restProxyDest, nil
+		tlsCfg := cert.TLSConfFromCert([]tls.Certificate{certData, externalCertData})
+		certPool := x509.NewCertPool()
+		certPool.AddCert(parsedCert)
+		certPool.AddCert(externalParsedCert)
+		restCreds := credentials.NewClientTLSFromCert(certPool, "")
+
+		restProxyDest := cfg.RPCListeners[0].String()
+		switch {
+		case strings.Contains(restProxyDest, "0.0.0.0"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+			)
+
+		case strings.Contains(restProxyDest, "[::]"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "[::]", "[::1]", 1,
+			)
+		}
+
+		return tlsCfg, &restCreds, restProxyDest, nil
+	} else {
+		rpcsLog.Infof("Done generating ephemeral TLS certificates")
+
+		certData, parsedCert, err := cert.LoadCert(
+			certBytes, keyBytes,
+		)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		tlsCfg := cert.TLSConfFromCert([]tls.Certificate{certData})
+		certPool := x509.NewCertPool()
+		certPool.AddCert(parsedCert)
+		restCreds := credentials.NewClientTLSFromCert(certPool, "")
+
+		restProxyDest := cfg.RPCListeners[0].String()
+		switch {
+		case strings.Contains(restProxyDest, "0.0.0.0"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+			)
+
+		case strings.Contains(restProxyDest, "[::]"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "[::]", "[::1]", 1,
+			)
+		}
+
+		return tlsCfg, &restCreds, restProxyDest, nil
+	}
 }
 
 // getTLSConfig returns a TLS configuration for the gRPC server and credentials
@@ -899,104 +970,245 @@ func getTLSConfig(cfg *Config, keyRing keychain.KeyRing) (*tls.Config,
 			}
 		}
 	}
+	externalSSLCertPath := cfg.ExternalSSLDir + "/tls.cert"
+	if cfg.ExternalSSLDomain != "" {
+		// Ensure we create TLS key and certificate if they don't exist.
+		if !fileExists(externalSSLCertPath) {
+			ltndLog.Infof("Requesting external certificate for domain %v",
+				cfg.ExternalSSLDomain)
 
-	certData, parsedCert, err := cert.LoadCert(
-		certBytes, keyBytes,
-	)
-	if err != nil {
-		return nil, nil, "", err
-	}
-
-	// We check whether the certifcate we have on disk match the IPs and
-	// domains specified by the config. If the extra IPs or domains have
-	// changed from when the certificate was created, we will refresh the
-	// certificate if auto refresh is active.
-	refresh := false
-	if cfg.TLSAutoRefresh {
-		refresh, err = cert.IsOutdated(
-			parsedCert, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
-		)
-		if err != nil {
-			return nil, nil, "", err
-		}
-	}
-
-	// If the certificate expired or it was outdated, delete it and the TLS
-	// key and generate a new pair.
-	if time.Now().After(parsedCert.NotAfter) || refresh {
-		ltndLog.Info("TLS certificate is expired or outdated, " +
-			"generating a new one")
-
-		err := os.Remove(cfg.TLSCertPath)
-		if err != nil {
-			return nil, nil, "", err
-		}
-
-		err = os.Remove(cfg.TLSKeyPath)
-		if err != nil {
-			return nil, nil, "", err
-		}
-
-		rpcsLog.Infof("Renewing TLS certificates...")
-		_, _, err = cert.GenCertPair(
-			"lnd autogenerated cert", cfg.TLSCertPath,
-			cfg.TLSKeyPath, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
-			cert.DefaultAutogenValidity, cfg.TLSEncryptKey, keyRing,
-		)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		rpcsLog.Infof("Done renewing TLS certificates")
-
-		// Reload the certificate data.
-		certBytes, err := ioutil.ReadFile(cfg.TLSCertPath)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		keyBytes, err := ioutil.ReadFile(cfg.TLSKeyPath)
-		if err != nil {
-			return nil, nil, "", err
-		}
-
-		// If key encryption is set, then decrypt the file.
-		// We don't need to do a file type check here because GenCertPair
-		// has been ran with the same value for cfg.TLSEncryptKey.
-		if cfg.TLSEncryptKey {
-			reader := bytes.NewReader(keyBytes)
-			keyBytes, err = lnencrypt.DecryptPayloadFromReader(reader, keyRing)
+			csr, err := cert.GenerateCsr(keyBytes, cfg.ExternalSSLDomain)
 			if err != nil {
+				return nil, nil, "", err
+			}
+
+			externalCert, err := cert.RequestExternalCert(csr, cfg.ExternalSSLDomain)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			err = cert.StartValidationListener(cfg.CertValidationPort, externalCert)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			certificate, caBundle, err := cert.GetExternalCert(externalCert)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			externalCertBytes := []byte(certificate + "\n" + caBundle)
+			if err = ioutil.WriteFile(externalSSLCertPath, externalCertBytes, 0644); err != nil {
 				return nil, nil, "", err
 			}
 		}
 
-		certData, _, err = cert.LoadCert(
+		externalCertBytes, err := ioutil.ReadFile(externalSSLCertPath)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		externalCertData, _, err := cert.LoadCert(
+			externalCertBytes, keyBytes,
+		)
+
+		certData, parsedCert, err := cert.LoadCert(
 			certBytes, keyBytes,
 		)
 		if err != nil {
 			return nil, nil, "", err
 		}
-	}
 
-	tlsCfg := cert.TLSConfFromCert(certData)
-	restCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
-	if err != nil {
-		return nil, nil, "", err
-	}
+		// We check whether the certifcate we have on disk match the IPs and
+		// domains specified by the config. If the extra IPs or domains have
+		// changed from when the certificate was created, we will refresh the
+		// certificate if auto refresh is active.
+		refresh := false
+		if cfg.TLSAutoRefresh {
+			refresh, err = cert.IsOutdated(
+				parsedCert, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+		}
 
-	restProxyDest := cfg.RPCListeners[0].String()
-	switch {
-	case strings.Contains(restProxyDest, "0.0.0.0"):
-		restProxyDest = strings.Replace(
-			restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+		// If the certificate expired or it was outdated, delete it and the TLS
+		// key and generate a new pair.
+		if time.Now().After(parsedCert.NotAfter) || refresh {
+			ltndLog.Info("TLS certificate is expired or outdated, " +
+				"generating a new one")
+
+			err := os.Remove(cfg.TLSCertPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			err = os.Remove(cfg.TLSKeyPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			rpcsLog.Infof("Renewing TLS certificates...")
+			_, _, err = cert.GenCertPair(
+				"lnd autogenerated cert", cfg.TLSCertPath,
+				cfg.TLSKeyPath, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
+				cert.DefaultAutogenValidity, cfg.TLSEncryptKey, keyRing,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			rpcsLog.Infof("Done renewing TLS certificates")
+
+			// Reload the certificate data.
+			certBytes, err := ioutil.ReadFile(cfg.TLSCertPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			keyBytes, err := ioutil.ReadFile(cfg.TLSKeyPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			// If key encryption is set, then decrypt the file.
+			// We don't need to do a file type check here because GenCertPair
+			// has been ran with the same value for cfg.TLSEncryptKey.
+			if cfg.TLSEncryptKey {
+				reader := bytes.NewReader(keyBytes)
+				keyBytes, err = lnencrypt.DecryptPayloadFromReader(reader, keyRing)
+				if err != nil {
+					return nil, nil, "", err
+				}
+			}
+
+			certData, _, err = cert.LoadCert(
+				certBytes, keyBytes,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+		}
+
+		tlsCfg := cert.TLSConfFromCert([]tls.Certificate{certData, externalCertData})
+		restCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		restProxyDest := cfg.RPCListeners[0].String()
+		switch {
+		case strings.Contains(restProxyDest, "0.0.0.0"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+			)
+
+		case strings.Contains(restProxyDest, "[::]"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "[::]", "[::1]", 1,
+			)
+		}
+
+		return tlsCfg, &restCreds, restProxyDest, nil
+
+	} else {
+
+		certData, parsedCert, err := cert.LoadCert(
+			certBytes, keyBytes,
 		)
+		if err != nil {
+			return nil, nil, "", err
+		}
 
-	case strings.Contains(restProxyDest, "[::]"):
-		restProxyDest = strings.Replace(
-			restProxyDest, "[::]", "[::1]", 1,
-		)
+		// We check whether the certifcate we have on disk match the IPs and
+		// domains specified by the config. If the extra IPs or domains have
+		// changed from when the certificate was created, we will refresh the
+		// certificate if auto refresh is active.
+		refresh := false
+		if cfg.TLSAutoRefresh {
+			refresh, err = cert.IsOutdated(
+				parsedCert, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+		}
+
+		// If the certificate expired or it was outdated, delete it and the TLS
+		// key and generate a new pair.
+		if time.Now().After(parsedCert.NotAfter) || refresh {
+			ltndLog.Info("TLS certificate is expired or outdated, " +
+				"generating a new one")
+
+			err := os.Remove(cfg.TLSCertPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			err = os.Remove(cfg.TLSKeyPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			rpcsLog.Infof("Renewing TLS certificates...")
+			_, _, err = cert.GenCertPair(
+				"lnd autogenerated cert", cfg.TLSCertPath,
+				cfg.TLSKeyPath, cfg.TLSExtraIPs, cfg.TLSExtraDomains,
+				cert.DefaultAutogenValidity, cfg.TLSEncryptKey, keyRing,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			rpcsLog.Infof("Done renewing TLS certificates")
+
+			// Reload the certificate data.
+			certBytes, err := ioutil.ReadFile(cfg.TLSCertPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			keyBytes, err := ioutil.ReadFile(cfg.TLSKeyPath)
+			if err != nil {
+				return nil, nil, "", err
+			}
+
+			// If key encryption is set, then decrypt the file.
+			// We don't need to do a file type check here because GenCertPair
+			// has been ran with the same value for cfg.TLSEncryptKey.
+			if cfg.TLSEncryptKey {
+				reader := bytes.NewReader(keyBytes)
+				keyBytes, err = lnencrypt.DecryptPayloadFromReader(reader, keyRing)
+				if err != nil {
+					return nil, nil, "", err
+				}
+			}
+
+			certData, _, err = cert.LoadCert(
+				certBytes, keyBytes,
+			)
+			if err != nil {
+				return nil, nil, "", err
+			}
+		}
+
+		tlsCfg := cert.TLSConfFromCert([]tls.Certificate{certData})
+		restCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		restProxyDest := cfg.RPCListeners[0].String()
+		switch {
+		case strings.Contains(restProxyDest, "0.0.0.0"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "0.0.0.0", "127.0.0.1", 1,
+			)
+
+		case strings.Contains(restProxyDest, "[::]"):
+			restProxyDest = strings.Replace(
+				restProxyDest, "[::]", "[::1]", 1,
+			)
+		}
+
+		return tlsCfg, &restCreds, restProxyDest, nil
 	}
-
-	return tlsCfg, &restCreds, restProxyDest, nil
 }
 
 // fileExists reports whether the named file or directory exists.
