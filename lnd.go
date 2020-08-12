@@ -885,7 +885,7 @@ func getEphemeralTLSConfig(cfg *Config, keyRing keychain.KeyRing) (*tls.Config,
 			return nil, nil, "", err
 		}
 
-		externalCertData, externalParsedCert, err := cert.LoadCert(
+		externalCertData, _, err := cert.LoadCert(
 			externalCertBytes, keyBytes,
 		)
 		if err != nil {
@@ -907,7 +907,6 @@ func getEphemeralTLSConfig(cfg *Config, keyRing keychain.KeyRing) (*tls.Config,
 		tlsCfg := cert.TLSConfFromCert([]tls.Certificate{certData, externalCertData})
 		certPool := x509.NewCertPool()
 		certPool.AddCert(parsedCert)
-		certPool.AddCert(externalParsedCert)
 		restCreds := credentials.NewClientTLSFromCert(certPool, "")
 
 		restProxyDest := cfg.RPCListeners[0].String()
