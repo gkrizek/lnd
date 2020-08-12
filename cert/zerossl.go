@@ -120,7 +120,7 @@ var certServer *http.Server
 func GenerateCsr(keyBytes []byte, domain string) (csrBuffer bytes.Buffer, err error) {
 	block, _ := pem.Decode(keyBytes)
 	x509Encoded := block.Bytes
-	privKey, err := x509.ParseECPrivateKey(x509Encoded)
+	privKey, err := x509.ParsePKCS1PrivateKey(x509Encoded)
 	if err != nil {
 		return csrBuffer, err
 	}
@@ -131,7 +131,7 @@ func GenerateCsr(keyBytes []byte, domain string) (csrBuffer bytes.Buffer, err er
 	asn1Subj, _ := asn1.Marshal(rawSubj)
 	template := x509.CertificateRequest{
 		RawSubject:         asn1Subj,
-		SignatureAlgorithm: x509.ECDSAWithSHA256,
+		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &template, privKey)
 	if err != nil {
@@ -203,6 +203,8 @@ func StartValidationListener(port int, certificate ExternalCert) error {
 	go func() {
 		addr := fmt.Sprintf(":%v", port)
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(content))
 		})
 		certServer = &http.Server{

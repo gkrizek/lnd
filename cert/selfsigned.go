@@ -2,9 +2,8 @@ package cert
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -226,7 +225,7 @@ func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
 	}
 
 	// Generate a private key for the certificate.
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -264,7 +263,7 @@ func GenCertPair(org, certFile, keyFile string, tlsExtraIPs,
 		return nil, nil, fmt.Errorf("failed to encode certificate: %v", err)
 	}
 
-	keybytes, err := x509.MarshalECPrivateKey(priv)
+	keybytes := x509.MarshalPKCS1PrivateKey(priv)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to encode privkey: %v", err)
 	}

@@ -477,6 +477,7 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, error) {
 	lndDir := CleanAndExpandPath(cfg.LndDir)
 	if lndDir != DefaultLndDir {
 		cfg.DataDir = filepath.Join(lndDir, defaultDataDirname)
+		cfg.ExternalSSLDir = filepath.Join(lndDir, defaultExternalSSLDir)
 		cfg.TLSCertPath = filepath.Join(lndDir, defaultTLSCertFilename)
 		cfg.TLSKeyPath = filepath.Join(lndDir, defaultTLSKeyFilename)
 		cfg.LogDir = filepath.Join(lndDir, defaultLogDirname)
@@ -488,6 +489,10 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, error) {
 			cfg.Watchtower.TowerDir =
 				filepath.Join(cfg.DataDir, defaultTowerSubDirname)
 		}
+	}
+
+	if err := os.MkdirAll(cfg.ExternalSSLDir, 0700); err != nil {
+		return nil, fmt.Errorf("Could not create external ssl dir")
 	}
 
 	// Create the lnd directory if it doesn't already exist.
