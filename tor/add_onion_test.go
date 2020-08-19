@@ -20,6 +20,7 @@ var (
 	}
 )
 
+<<<<<<< HEAD
 type mockKeyRing struct {
 	fail bool
 }
@@ -40,8 +41,35 @@ func (m *mockKeyRing) DeriveKey(keyLoc keychain.KeyLocator) (keychain.KeyDescrip
 }
 
 // testOnionFile tests that the OnionFile implementation of the OnionStore
+||||||| 6d815379
+// TestOnionFile tests that the OnionFile implementation of the OnionStore
+=======
+type mockKeyRing struct {
+	fail bool
+}
+
+func (m *mockKeyRing) DeriveNextKey(keyFam keychain.KeyFamily) (keychain.KeyDescriptor, error) {
+	return keychain.KeyDescriptor{}, nil
+}
+
+func (m *mockKeyRing) DeriveKey(keyLoc keychain.KeyLocator) (keychain.KeyDescriptor, error) {
+	if m.fail {
+		return keychain.KeyDescriptor{}, fmt.Errorf("fail")
+	}
+
+	_, pub := btcec.PrivKeyFromBytes(btcec.S256(), testWalletPrivKey)
+	return keychain.KeyDescriptor{
+		PubKey: pub,
+	}, nil
+}
+
+// TestOnionFile tests that the OnionFile implementation of the OnionStore
+>>>>>>> externalssl
 // interface behaves as expected.
 func testOnionFile(withEncryption bool) error {
+
+	// create a mock KeyRing to test encryption
+	keyRing := &mockKeyRing{}
 
 	// create a mock KeyRing to test encryption
 	keyRing := &mockKeyRing{}
@@ -56,7 +84,53 @@ func testOnionFile(withEncryption bool) error {
 
 	// Create a new file-based onion store. A private key should not exist
 	// yet.
-	onionFile := NewOnionFile(privateKeyPath, 0600, withEncryption, keyRing)
+	onionFile := NewOnionFile(privateKeyPath, 0600, false, keyRing)
+	if _, err := onionFile.PrivateKey(V2); err != ErrNoPrivateKey {
+		t.Fatalf("expected ErrNoPrivateKey, got \"%v\"", err)
+	}
+
+	// Store the private key and ensure what's stored matches.
+	if err := onionFile.StorePrivateKey(V2, privateKey); err != nil {
+		t.Fatalf("unable to store private key: %v", err)
+	}
+	storePrivateKey, err := onionFile.PrivateKey(V2)
+	if err != nil {
+		t.Fatalf("unable to retrieve private key: %v", err)
+	}
+	if !bytes.Equal(storePrivateKey, privateKey) {
+		t.Fatalf("expected private key \"%v\", got \"%v\"",
+			string(privateKey), string(storePrivateKey))
+	}
+
+	// Finally, delete the private key. We should no longer be able to
+	// retrieve it.
+	if err := onionFile.DeletePrivateKey(V2); err != nil {
+		t.Fatalf("unable to delete private key: %v", err)
+	}
+	if _, err := onionFile.PrivateKey(V2); err != ErrNoPrivateKey {
+		t.Fatal("found deleted private key")
+	}
+}
+
+// TestEncryptedOnionFile tests that the OnionFile implementation of the OnionStore
+// interface behaves as expected with encryption enabled..
+func TestEncryptedOnionFile(t *testing.T) {
+	t.Parallel()
+
+	// create a mock KeyRing to test encryption
+	keyRing := &mockKeyRing{}
+
+	tempDir, err := ioutil.TempDir("", "onion_store")
+	if err != nil {
+		t.Fatalf("unable to create temp dir: %v", err)
+	}
+
+	privateKey := []byte("RSA1024:hide_me_plz")
+	privateKeyPath := filepath.Join(tempDir, "secret")
+
+	// Create a new encrypted file-based onion store. A private key
+	// should not exist yet.
+	onionFile := NewOnionFile(privateKeyPath, 0600, true, keyRing)
 	if _, err := onionFile.PrivateKey(V2); err != ErrNoPrivateKey {
 		return fmt.Errorf("expected ErrNoPrivateKey, got \"%v\"", err)
 	}
@@ -65,6 +139,7 @@ func testOnionFile(withEncryption bool) error {
 	if err := onionFile.StorePrivateKey(V2, privateKey); err != nil {
 		return fmt.Errorf("unable to store private key: %v", err)
 	}
+	// The PrivateKey function decrypted the key if it's encrypted.
 	storePrivateKey, err := onionFile.PrivateKey(V2)
 	if err != nil {
 		return fmt.Errorf("unable to retrieve private key: %v", err)

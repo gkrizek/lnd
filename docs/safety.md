@@ -128,7 +128,6 @@ certificates
 - The temporary TLS cert is only valid for 24 hours while the persistent certs
 are valid for more than a year.
 
-
 ### Macaroons
 
 Macaroons are used as the main authentication method in `lnd`. A macaroon is a

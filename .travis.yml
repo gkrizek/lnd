@@ -46,8 +46,22 @@ jobs:
 
         # Step 3: Lint go code. Limit to 1 worker to reduce memory usage.
         - make lint workers=1
+<<<<<<< HEAD
 
     - stage: Integration Test
+        - make btcd
+        - make release sys=windows-amd64
+    - script: make itest
+        - make btcd
+        - make release sys=windows-amd64
+        - make mobile-rpc
+        - go build --tags="mobile" ./mobile
+    - stage: Test
+      script: make travis-cover
+      name: Unit Cover
+    - script: make travis-race
+      name: Unit Race
+    - script: make itest
       name: Btcd Integration
       script:
         - make itest

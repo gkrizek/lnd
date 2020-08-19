@@ -33,10 +33,10 @@ const (
 	V3
 
 	// key parameter that Tor accepts for a new V2 service.
-	v2keyParam = "RSA1024"
+	V2keyParam string = "RSA1024"
 
 	// key parameter that Tor accepts for a new V3 service.
-	v3keyParam = "ED25519-V3"
+	V3keyParam string = "ED25519-V3"
 )
 
 // OnionStore is a store containing information about a particular onion
@@ -106,8 +106,8 @@ func (f *OnionFile) PrivateKey(_ OnionType) ([]byte, error) {
 
 	// If the privateKey doesn't start with either v2 or v3 key params
 	// it's likely encrypted.
-	if !bytes.HasPrefix(privateKey, []byte(v2keyParam)) &&
-		!bytes.HasPrefix(privateKey, []byte(v3keyParam)) {
+	if !bytes.HasPrefix(privateKey, []byte(V2keyParam)) &&
+		!bytes.HasPrefix(privateKey, []byte(V3keyParam)) {
 		// If the privateKey is encrypted but --tor.encryptkey
 		// wasn't set we return an error
 		if !f.encryptKey {
@@ -173,9 +173,9 @@ func (c *Controller) AddOnion(cfg AddOnionConfig) (*OnionAddr, error) {
 	var keyParam string
 	switch cfg.Type {
 	case V2:
-		keyParam = "NEW:" + v2keyParam
+		keyParam = "NEW:" + V2keyParam
 	case V3:
-		keyParam = "NEW:" + v3keyParam
+		keyParam = "NEW:" + V3keyParam
 	}
 
 	if cfg.Store != nil {
