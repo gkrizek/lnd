@@ -5,6 +5,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -76,11 +78,21 @@ func getClientConn(ctx *cli.Context, skipMacaroons bool) *grpc.ClientConn {
 	}
 
 	// Load the specified TLS certificate and build transport credentials
-	// with it.
-	creds, err := credentials.NewClientTLSFromFile(tlsCertPath, "")
-	if err != nil {
-		fatal(err)
+	// with it. If there is no certificate present, assume lnd will send us
+	// a valid, non self-signed, certificate.
+	var creds credentials.TransportCredentials
+	cacerts, _ := x509.SystemCertPool()
+	if cacerts == nil {
+		cacerts = x509.NewCertPool()
 	}
+	if fileExists(tlsCertPath) {
+		pem, err := ioutil.ReadFile(tlsCertPath)
+		if err != nil {
+			fatal(err)
+		}
+		cacerts.AppendCertsFromPEM(pem)
+	}
+	creds = credentials.NewTLS(&tls.Config{RootCAs: cacerts})
 
 	// Create a dial options array.
 	opts := []grpc.DialOption{
@@ -342,4 +354,14 @@ func cleanAndExpandPath(path string) string {
 	// NOTE: The os.ExpandEnv doesn't work with Windows-style %VARIABLE%,
 	// but the variables can still be expanded via POSIX-style $VARIABLE.
 	return filepath.Clean(os.ExpandEnv(path))
+}
+
+// fileExists reports whether the named file or directory exists.
+func fileExists(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
