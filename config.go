@@ -1161,6 +1161,11 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, error) {
 		return nil, fmt.Errorf("unable to parse node color: %v", err)
 	}
 
+	// Force several settings to 'on' because Voltage requires them
+	cfg.TLSDisableAutofill = true
+	cfg.TLSEncryptKey = true
+	cfg.Tor.EncryptKey = true
+
 	// All good, return the sanitized result.
 	return &cfg, err
 }
